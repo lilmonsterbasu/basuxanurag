@@ -13,25 +13,62 @@ import { DEFAULT_SETTINGS, type Message, type Settings } from '@/types'
 const KEY_MESSAGES = 'voice-operator:messages'
 const KEY_SETTINGS = 'voice-operator:settings'
 
-export function loadMessages(): Message[] {
-  // TODO(Part A): parse KEY_MESSAGES, validate it is an array, return [] on any failure.
-  return []
+function isMessage(value: unknown): value is Message {
+  if (typeof value !== 'object' || value === null) return false
+  const m = value as Record<string, unknown>
+  return (
+    typeof m.id === 'string' &&
+    (m.role === 'user' || m.role === 'assistant') &&
+    typeof m.content === 'string' &&
+    typeof m.timestamp === 'number'
+  )
 }
 
-export function saveMessages(_messages: Message[]): void {
-  // TODO(Part A): write KEY_MESSAGES inside a try/catch (quota errors are real).
+export function loadMessages(): Message[] {
+  try {
+    const raw = localStorage.getItem(KEY_MESSAGES)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(isMessage)
+  } catch {
+    return []
+  }
+}
+
+export function saveMessages(messages: Message[]): void {
+  try {
+    localStorage.setItem(KEY_MESSAGES, JSON.stringify(messages))
+  } catch {
+    // Quota exceeded or storage disabled — conversation just won't persist.
+  }
 }
 
 export function loadSettings(): Settings {
-  // TODO(Part A): merge stored partial over DEFAULT_SETTINGS so new fields we add
-  // later do not come back undefined for existing users.
-  return DEFAULT_SETTINGS
+  try {
+    const raw = localStorage.getItem(KEY_SETTINGS)
+    if (!raw) return { ...DEFAULT_SETTINGS }
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return { ...DEFAULT_SETTINGS }
+    return { ...DEFAULT_SETTINGS, ...(parsed as Partial<Settings>) }
+  } catch {
+    return { ...DEFAULT_SETTINGS }
+  }
 }
 
-export function saveSettings(_settings: Settings): void {
-  // TODO(Part A)
+export function saveSettings(settings: Settings): void {
+  try {
+    localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings))
+  } catch {
+    // Quota exceeded or storage disabled — settings just won't persist.
+  }
 }
 
 export function clearAll(): void {
-  // TODO(Part A): remove both keys.
+  try {
+    localStorage.removeItem(KEY_MESSAGES)
+    localStorage.removeItem(KEY_SETTINGS)
+  } catch {
+    // Nothing we can do if storage itself is unavailable.
+  }
 }
