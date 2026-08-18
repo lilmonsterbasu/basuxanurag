@@ -76,6 +76,12 @@ export function useConversation(): ConversationController {
     saveSettings(settings)
   }, [settings])
 
+  // Declared before runAssistantTurn because that callback needs `speak`.
+  // `speak`/`cancel` are stable useCallbacks, so depending on them directly
+  // doesn't recreate the turn handler on every render.
+  const synthesis = useSpeechSynthesis(settings)
+  const { speak, cancel: cancelSynthesis } = synthesis
+
   const runAssistantTurn = useCallback(async (history: Message[]) => {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -114,7 +120,7 @@ export function useConversation(): ConversationController {
 
       if (s.autoSpeak && trimmed) {
         setState('speaking')
-        synthesisRef.current.speak(trimmed, () => setState('idle'))
+        speak(trimmed, () => setState('idle'))
       } else {
         setState('idle')
       }
@@ -124,7 +130,7 @@ export function useConversation(): ConversationController {
       setLiveReply('')
       setState('idle')
     }
-  }, [])
+  }, [speak])
 
   const handleFinal = useCallback(
     (text: string) => {
@@ -149,13 +155,6 @@ export function useConversation(): ConversationController {
     language: settings.language,
     onFinal: handleFinal,
   })
-  const synthesis = useSpeechSynthesis(settings)
-  // runAssistantTurn's closure is created once (useCallback with no deps that
-  // change) but needs the latest `synthesis.speak`; route through a ref so we
-  // don't have to widen the dependency array and recreate the callback.
-  const synthesisRef = useRef(synthesis)
-  synthesisRef.current = synthesis
-
   const audioLevel = useAudioLevel(state === 'listening')
 
   // If the recognizer stops on its own (silence timeout) without ever
@@ -195,15 +194,15 @@ export function useConversation(): ConversationController {
   }, [state, startListening, stopListening])
 
   const cancelSpeaking = useCallback(() => {
-    synthesis.cancel()
+    cancelSynthesis()
     abortRef.current?.abort()
     setLiveReply('')
     setState('idle')
-  }, [synthesis])
+  }, [cancelSynthesis])
 
   const clearConversation = useCallback(() => {
     abortRef.current?.abort()
-    synthesis.cancel()
+    cancelSynthesis()
     recognition.stop()
     clearAll()
     messagesRef.current = []
@@ -211,17 +210,17 @@ export function useConversation(): ConversationController {
     setLiveReply('')
     setError(null)
     setState('idle')
-  }, [synthesis, recognition])
+  }, [cancelSynthesis, recognition])
 
   const sendText = useCallback(
     (text: string) => {
       if (!text.trim()) return
       abortRef.current?.abort()
-      synthesis.cancel()
+      cancelSynthesis()
       setError(null)
       handleFinal(text)
     },
-    [handleFinal, synthesis],
+    [handleFinal, cancelSynthesis],
   )
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
